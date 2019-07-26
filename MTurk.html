@@ -113,6 +113,8 @@
     <p>
         <label for="transparency">Transparency percentage</label>
         <input type="range" min="0" max="100" class="range-field my-4 w-25" id="transparency_slider">
+        <label for="brush_size">Brush size</label>
+        <input type="range" min="0" max="100" class="range-field my-4 w-25" id="brush_size_slider">
     </p>
 
     <div>
@@ -155,10 +157,12 @@
     var colors = {};
     var timeDownUp = null;
     var rightClick = false;
+    var brushSize = 10;
 
-    var currentLink    = { 'class': [], 'mode': 'link', 'data': [] };
+    var currentLink    = { 'class': [], 'mode': 'link',    'data': [] };
     var currentPolygon = { 'class': [], 'mode': 'polygon', 'data': [] };
-    var currentBbox    = { 'class': [], 'mode': 'bbox', 'data': [] };
+    var currentBbox    = { 'class': [], 'mode': 'bbox',    'data': [] };
+    var currentBrush   = { 'class': [], 'mode': 'brush',   'data': [] };
 
     var start = function () {
         parent = document.getElementById("parent");
@@ -202,7 +206,7 @@
         var mode_data = "${annotation_mode}";
         if (mode_data == ("$" + "{annotation_mode}")) // running in local demo mode
         {
-            mode_data = "dot-link-polygon-bbox";
+            mode_data = "brush";
         }
         modes = mode_data.split('-');
         mode = modes[0];
@@ -231,10 +235,16 @@
         classSelection.selectedIndex = 0;
         updateGraphics();
 
-        //initialize slider
-        var slider = document.getElementById('transparency_slider')
-        slider.oninput = function() {
+        //initialize sliders
+        var transparency_slider = document.getElementById('transparency_slider')
+        transparency_slider.oninput = function() {
             transparency_level = this.value / 100.0;
+            updateGraphics();
+        };
+        
+        var brush_size_slider = document.getElementById('brush_size_slider')
+        brush_size_slider.oninput = function() {
+            brushSize = 20 * this.value / 100.0;
             updateGraphics();
         };
 
@@ -271,10 +281,15 @@
             anchorY = evt.clientY;
             dragged = false;
             dragStart = true;
-            if (mode == "bbox" && !rightClick && !getDeleteMode()){
-                currentBbox.class = getClass();
-                currentBbox.data = new Array();
-                currentBbox.data.push([correctX, correctY]);
+            if (!getDeleteMode() && !rightClick){
+                if (mode == 'bbox'){
+                    currentBbox.class = getClass();
+                    currentBbox.data = new Array();
+                    currentBbox.data.push([correctX, correctY]);
+                } else if (mode == 'brush') {
+                    currentBrush.class = getClass();
+                    currentBrush.data.push([correctX, correctY]);
+                }
             }
         });
 
@@ -282,13 +297,20 @@
             timeDownUp = new Date().getTime();
             getCorrectCoords(evt);
             if (dragged) {
-                if (mode == "bbox" && !rightClick) {
-                    currentBbox.data.push([correctX, correctY]);
-                    if (currentBbox.data.length == 2){
-                        annotations.push(Object.assign({}, currentBbox));
+                if (!rightClick){
+                    if (mode == "bbox") {
+                        currentBbox.data.push([correctX, correctY]);
+                        if (currentBbox.data.length == 2){
+                            annotations.push(Object.assign({}, currentBbox));
+                        }
+                        currentBbox.data = new Array();
+                    } else if (mode == "brush") {
+                        currentBrush.data.push([correctX, correctY]);
+                        annotations.push(Object.assign({}, currentBrush));
+                        currentBrush.data = new Array();
                     }
-                    currentBbox.data = new Array();
                 }
+                
             } else {
                 if (!rightClick){
                     if (getDeleteMode() == true) {
@@ -338,6 +360,10 @@
                 }
             } else if (mode == "bbox" && dragStart) {
                 dragged = true;
+                updateGraphics();
+            } else if (mode == "brush" && dragStart) {
+                dragged = true;
+                currentBrush.data.push([correctX, correctY]);
                 updateGraphics();
             } else if (mode == "link") {
                 updateGraphics();
@@ -436,7 +462,6 @@
                 $("#delete_button").addClass('btn-primary');
                 updateGraphics();
             }
-
         }
 
         function reset() {
@@ -487,9 +512,11 @@
 
         function clearAnnotations() {
             annotations = new Array();
-            trashcan = new Array();
-            currentLink = { 'class': [], 'mode': 'link', 'data': [] };
+            trashcan    = new Array();
+            currentLink    = { 'class': [], 'mode': 'link',    'data': [] };
             currentPolygon = { 'class': [], 'mode': 'polygon', 'data': [] };
+            currentBbox    = { 'class': [], 'mode': 'bbox',    'data': [] };
+            currentBrush   = { 'class': [], 'mode': 'brush',   'data': [] };
             ctx.clearRect(0, 0, canvas.width, canvas.height);
         }
 
@@ -527,7 +554,6 @@
                         ctx.fillRect(corners[1][0] - dotSize / 2, corners[1][1] - dotSize / 2, dotSize, dotSize);
                         break;
                     case "polygon":
-                        // draw complete polygons
                         ctx.fillStyle   = "rgba(" + r + "," + g + "," + b + ", " + transparency_level + ")";
                         ctx.strokeStyle = "rgba(" + r + "," + g + "," + b + ", 1.0)";
                         fillPolygon(corners);
@@ -541,6 +567,18 @@
                         var ymax = ann.data[1][1];
                         var corners = [[xmin, ymin], [xmax, ymin], [xmax, ymax], [xmin, ymax]];
                         fillPolygon(corners);
+                        break;
+                    case "brush":
+                        ctx.fillStyle   = "rgba(" + r + "," + g + "," + b + ", " + transparency_level + ")";
+                        ctx.strokeStyle = "rgba(" + r + "," + g + "," + b + ", " + transparency_level + ")";
+                        ctx.lineWidth = brushSize;
+                        ctx.beginPath();
+                        ctx.moveTo(corners[0][0], corners[0][1]);
+                        for (var j = 1; j < corners.length; j++) {
+                            ctx.lineTo(corners[j][0], corners[j][1]);
+                        }
+                        ctx.stroke();
+                        ctx.lineWidth = 1;
                 }
             }
 
@@ -581,6 +619,22 @@
                 var ymax = correctY;
                 var corners = [[xmin, ymin], [xmax, ymin], [xmax, ymax], [xmin, ymax]];
                 fillPolygon(corners);
+            }
+
+            // draw current brush
+            if (currentBrush.data.length != 0) {
+                var r, g, b;
+                [r, g, b] = getColor(currentBrush);
+                ctx.fillStyle   = "rgba(" + r + "," + g + "," + b + ", " + transparency_level + ")";
+                ctx.strokeStyle = "rgba(" + r + "," + g + "," + b + ", " + transparency_level + ")";
+                var corners = currentBrush.data;
+                ctx.lineWidth = brushSize;
+                ctx.beginPath();
+                ctx.moveTo(corners[0][0], corners[0][1]);
+                for (var i = 1; i < corners.length; i++) {
+                    ctx.lineTo(corners[i][0], corners[i][1]);
+                }
+                ctx.stroke();
             }
         }
 
